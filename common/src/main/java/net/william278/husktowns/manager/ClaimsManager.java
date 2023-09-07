@@ -23,7 +23,11 @@ import de.themoep.minedown.adventure.MineDown;
 import net.kyori.adventure.text.Component;
 import net.william278.husktowns.HuskTowns;
 import net.william278.husktowns.audit.Action;
-import net.william278.husktowns.claim.*;
+import net.william278.husktowns.claim.Chunk;
+import net.william278.husktowns.claim.Claim;
+import net.william278.husktowns.claim.ClaimWorld;
+import net.william278.husktowns.claim.TownClaim;
+import net.william278.husktowns.claim.World;
 import net.william278.husktowns.map.ClaimMap;
 import net.william278.husktowns.network.Message;
 import net.william278.husktowns.network.Payload;
@@ -35,6 +39,7 @@ import net.william278.husktowns.user.SavedUser;
 import net.william278.husktowns.user.User;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
@@ -175,6 +180,10 @@ public class ClaimsManager {
             plugin.fireEvent(plugin.getUnClaimEvent(user, claim), (event -> {
                 // Delete the claim
                 deleteClaimData(user, claim, world);
+                final Chunk claimChunk = claim.claim().getChunk();
+                // disable flying for members in unclaimed chunk
+                disableFlyWhenUnclaimingChunk(claim.claim(), town);
+
                 plugin.getLocales().getLocale("claim_deleted", Integer.toString(chunk.getX()),
                                 Integer.toString(chunk.getZ()), town.getName())
                         .ifPresent(user::sendMessage);
@@ -211,10 +220,15 @@ public class ClaimsManager {
         plugin.fireEvent(plugin.getUnClaimAllEvent(user, town), (event -> {
             try {
                 plugin.getMapHook().ifPresent(mapHook -> mapHook.removeClaimMarkers(town));
-                plugin.getClaimWorlds().values().forEach(world -> world.removeTownClaims(town.getId()));
+                plugin.getClaimWorlds().values().forEach(world -> {
+                    final Collection<Claim> removed = world.getAndRemoveTownClaims(town.getId());
+                    disableFlyWhenUnclaimingChunk(removed, town);
+                });
                 plugin.getDatabase().getAllClaimWorlds().forEach((serverWorld, claimWorld) -> {
                     if (serverWorld.server().equals(plugin.getServerName())) {
-                        if (claimWorld.removeTownClaims(town.getId()) > 0) {
+                        final Collection<Claim> removedClaims = claimWorld.getAndRemoveTownClaims(town.getId());
+                        disableFlyWhenUnclaimingChunk(removedClaims, town);
+                        if (removedClaims.size() > 0) {
                             plugin.getDatabase().updateClaimWorld(claimWorld);
                         }
                     }
@@ -241,6 +255,21 @@ public class ClaimsManager {
                 plugin.log(Level.SEVERE, "Failed to delete all claims for town " + town.getName(), e);
             }
         }));
+    }
+
+    public void disableFlyWhenUnclaimingChunk(Claim claim, Town town) {
+        final Chunk claimChunk = claim.getChunk();
+        plugin.getOnlineUsers().forEach(online -> {
+            if (!town.getMembers().containsKey(online.getUuid())) return;
+            if (!online.getChunk().equals(claimChunk)) return;
+            final Preferences preferences = plugin.getUserPreferences().get(online.getUuid());
+            if (preferences == null || !preferences.isTownFly()) return;
+            online.setFlying(false);
+        });
+    }
+
+    public void disableFlyWhenUnclaimingChunk(Collection<Claim> claims, Town town) {
+        claims.forEach(claim -> disableFlyWhenUnclaimingChunk(claim, town));
     }
 
     public void deleteClaimData(@NotNull OnlineUser user, @NotNull TownClaim claim, @NotNull World world) throws IllegalArgumentException {

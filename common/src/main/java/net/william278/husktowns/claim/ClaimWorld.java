@@ -27,6 +27,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -129,15 +130,33 @@ public class ClaimWorld {
      * @return the number of claims removed
      */
     public int removeTownClaims(int townId) {
+//        if (claims.containsKey(townId)) {
+//            int claimCount = claims.get(townId).size();
+//            final Collection<Claim> removed = claims.remove(townId);
+//            if (removed != null) {
+//                removed.forEach(claim -> claimsByChunk.remove(claim.getChunk()));
+//            }
+//            return claimCount;
+//        }
+//        return 0;
+        return getAndRemoveTownClaims(townId).size();
+    }
+
+    /**
+     * Remove claims by a town on this world
+     *
+     * @param townId the ID of the town to remove claims for
+     * @return the claims removed
+     */
+    public Collection<Claim> getAndRemoveTownClaims(int townId) {
         if (claims.containsKey(townId)) {
-            int claimCount = claims.get(townId).size();
             final Collection<Claim> removed = claims.remove(townId);
             if (removed != null) {
                 removed.forEach(claim -> claimsByChunk.remove(claim.getChunk()));
             }
-            return claimCount;
+            return removed;
         }
-        return 0;
+        return Collections.emptySet();
     }
 
     public void addClaim(@NotNull TownClaim townClaim) {
